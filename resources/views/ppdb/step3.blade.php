@@ -32,7 +32,11 @@
                 </div>
             </div>
         </div>
-
+        @if (session('warning'))
+            <div class="bg-yellow-500/20 text-yellow-200 p-4 rounded-lg mb-6">
+                ⚠️ {{ session('warning') }}
+            </div>
+        @endif
         <!-- Form Upload -->
         <form action="{{ route('daftar.store') }}" method="POST" enctype="multipart/form-data" id="submitForm">
             @csrf
@@ -127,8 +131,10 @@
 
     <script>
         document.getElementById("submitForm").addEventListener("submit", function() {
+            this.querySelector("button[type=submit]").disabled = true;
             document.getElementById("submitText").classList.add("hidden");
             document.getElementById("loader").classList.remove("hidden");
         });
     </script>
+
 @endsection

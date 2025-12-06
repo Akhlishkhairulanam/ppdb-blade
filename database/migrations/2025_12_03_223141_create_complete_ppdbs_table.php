@@ -6,62 +6,58 @@ use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
 {
-    public function up()
+    public function up(): void
     {
-        if (!Schema::hasTable('ppdbs')) {
-            Schema::create('ppdbs', function (Blueprint $table) {
-                $table->id();
-                $table->string('no_pendaftaran')->unique()->nullable();
-                $table->string('nama');
-                $table->string('nik', 16)->unique();
-                $table->string('tempat_lahir');
-                $table->date('tanggal_lahir');
-                $table->integer('umur');
-                $table->enum('jenis_kelamin', ['Laki-laki', 'Perempuan']);
-                $table->integer('anak_ke');
-                $table->integer('dari_bersaudara');
-                $table->string('asal_sekolah');
-                $table->text('alamat');
-                $table->string('email')->nullable()->unique();
+        Schema::create('ppdbs', function (Blueprint $table) {
+            $table->id();
 
-                // Data orang tua
-                $table->string('nama_ayah');
-                $table->string('nama_ibu');
-                $table->string('no_hp_ayah', 15);
-                $table->string('no_hp_ibu', 15);
-                $table->string('pendapatan');
-                $table->text('alamat_orang_tua');
+            // Nomor Pendaftaran
+            $table->string('no_pendaftaran')->unique();
 
-                // Upload file
-                $table->string('foto_anak');
-                $table->string('foto_kk');
-                $table->string('foto_akte');
-                $table->string('foto_ktp_ayah');
-                $table->string('foto_ktp_ibu');
+            // Data Calon Siswa
+            $table->string('nama');
+            $table->string('nik', 16)();
+            $table->string('tempat_lahir');
+            $table->date('tanggal_lahir');
+            $table->integer('umur')->nullable();
+            $table->enum('jenis_kelamin', ['Laki-laki', 'Perempuan']);
+            $table->integer('anak_ke');
+            $table->integer('dari_bersaudara');
+            $table->string('asal_sekolah');
+            $table->text('alamat');
 
-                // Status dan admin
-                $table->enum('status', ['menunggu', 'diterima', 'ditolak'])->default('menunggu');
-                $table->text('catatan_admin')->nullable();
-                $table->timestamp('disetujui_pada')->nullable();
-                $table->string('disetujui_oleh')->nullable();
+            // Data Orang Tua
+            $table->string('nama_ayah');
+            $table->string('nama_ibu');
+            $table->string('no_hp_ayah', 15);
+            $table->string('no_hp_ibu', 15);
+            $table->string('pendapatan', 50);
+            $table->text('alamat_orang_tua');
 
-                $table->timestamps();
-                $table->softDeletes();
-            });
-        } else {
-            // Jika tabel sudah ada, tambahkan kolom yang mungkin belum ada
-            Schema::table('ppdbs', function (Blueprint $table) {
-                if (!Schema::hasColumn('ppdbs', 'email')) {
-                    $table->string('email')->nullable()->unique()->after('alamat');
-                }
-                if (!Schema::hasColumn('ppdbs', 'foto_akte')) {
-                    $table->string('foto_akte')->after('foto_kk');
-                }
-            });
-        }
+            // File Uploads
+            $table->string('foto_anak')->nullable();
+            $table->string('foto_kk')->nullable();
+            $table->string('foto_akte')->nullable();
+            $table->string('foto_ktp_ayah')->nullable();
+            $table->string('foto_ktp_ibu')->nullable();
+
+            // Status & Admin
+            $table->enum('status', ['menunggu', 'diterima', 'ditolak'])->default('menunggu');
+            $table->text('catatan_admin')->nullable();
+            $table->timestamp('disetujui_pada')->nullable();
+            $table->string('disetujui_oleh')->nullable();
+
+            $table->timestamps();
+
+            // Indexes
+            $table->index('status');
+            $table->index('no_pendaftaran');
+            $table->index('created_at');
+            $table->index('nik');
+        });
     }
 
-    public function down()
+    public function down(): void
     {
         Schema::dropIfExists('ppdbs');
     }

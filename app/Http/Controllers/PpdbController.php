@@ -9,6 +9,7 @@ use Illuminate\Support\Str;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Validator;
+use Illuminate\Support\Facades\DB;
 
 class PpdbController extends Controller
 {
@@ -17,14 +18,11 @@ class PpdbController extends Controller
      */
     public function step1()
     {
-        // Clear session lama
-        session()->forget(['step1', 'step2', 'step3']);
+        session()->forget(['step1', 'step2']);
 
-        return view('daftar-sekarang', [
-            'csrf_token' => csrf_token(),
-            'timestamp' => now()->timestamp
-        ]);
+        return view('daftar-sekarang');
     }
+
 
     /**
      * Menampilkan form step 1 (terpisah)
@@ -80,7 +78,7 @@ class PpdbController extends Controller
         }
 
         $step1 = session('step1');
-        return view('ppdb.step2', compact('step1'));
+        return view('ppdb.step2');
     }
 
     /**
@@ -126,7 +124,7 @@ class PpdbController extends Controller
         $step1 = session('step1');
         $step2 = session('step2');
 
-        return view('ppdb.step3', compact('step1', 'step2'));
+        return view('ppdb.step3');
     }
 
     /**
@@ -134,11 +132,12 @@ class PpdbController extends Controller
      */
     public function store(Request $request)
     {
-        Log::info('🚀 =========== PPDB STORE METHOD START ===========');
-        Log::info('📅 Timestamp: ' . now()->toDateTimeString());
-        Log::info('🌐 IP Address: ' . $request->ip());
-        Log::info('🖥️ User Agent: ' . $request->header('User-Agent'));
-        Log::info('🔐 CSRF Token: ' . $request->_token);
+        Log::info('=== PPDB STORE METHOD CALLED ===');
+        Log::info('Request Data:', $request->except(['foto_anak', 'foto_kk', 'foto_akte', 'foto_ktp_ayah', 'foto_ktp_ibu']));
+        Log::info('Files uploaded:', array_keys($request->allFiles()));
+
+        // Mulai database transaction
+        DB::beginTransaction();
 
         // Log semua input kecuali file
         $inputs = $request->all();
@@ -297,11 +296,6 @@ class PpdbController extends Controller
                 'updated_at' => now(),
             ];
 
-            // Tambahkan email jika ada (dari sistem terpisah)
-            if (isset($validated['email'])) {
-                $dataToSave['email'] = $validated['email'];
-            }
-
             // Upload file ke storage
             $uploadPath = 'dokumen/ppdb/' . date('Y/m/d');
 
@@ -338,6 +332,7 @@ class PpdbController extends Controller
 
             // Simpan ke database
             $ppdb = Ppdb::create($dataToSave);
+            DB::commit();
 
             Log::info('🎉 DATA SAVED SUCCESSFULLY!');
             Log::info('🆔 ID: ' . $ppdb->id);
@@ -352,7 +347,7 @@ class PpdbController extends Controller
             }
 
             // Redirect ke halaman sukses
-            $successUrl = route('daftar.success', ['id' => $ppdb->id]);
+            return redirect()->route('daftar.success', $ppdb->no_pendaftaran);
             Log::info('🔗 Redirecting to: ' . $successUrl);
 
             return redirect($successUrl)
@@ -384,15 +379,15 @@ class PpdbController extends Controller
     /**
      * Tampilkan halaman sukses
      */
-    public function showSuccess($id)
+    public function showSuccess($no_pendaftaran)
     {
         try {
-            Log::info('🔄 Accessing success page for ID: ' . $id);
+            Log::info('🔄 Accessing success page for ID: ' . $no_pendaftaran);
 
-            $ppdb = Ppdb::find($id);
+            $ppdb = Ppdb::where('no_pendaftaran', $no_pendaftaran)->firstOrFail();
 
             if (!$ppdb) {
-                Log::warning('⚠️ PPDB not found for ID: ' . $id);
+                Log::warning('⚠️ PPDB not found for ID: ' . $no_pendaftaran);
 
                 // Coba cari berdasarkan flash data
                 if (session('no_pendaftaran')) {

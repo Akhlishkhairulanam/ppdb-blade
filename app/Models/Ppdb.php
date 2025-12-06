@@ -4,14 +4,18 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\SoftDeletes;
+use Carbon\Carbon;
 
 class Ppdb extends Model
 {
-    use HasFactory, SoftDeletes;
+    use HasFactory;
+
+    protected $table = 'ppdbs'; // ✅ PASTIKAN sesuai migration
 
     protected $fillable = [
         'no_pendaftaran',
+
+        // ✅ Data Siswa
         'nama',
         'nik',
         'tempat_lahir',
@@ -22,64 +26,100 @@ class Ppdb extends Model
         'dari_bersaudara',
         'asal_sekolah',
         'alamat',
-        'alamat_orang_tua',
+
+        // ✅ Data Orang Tua
         'nama_ayah',
         'nama_ibu',
         'no_hp_ayah',
         'no_hp_ibu',
         'pendapatan',
+        'alamat_orang_tua',
+
+        // ✅ Upload
         'foto_anak',
         'foto_kk',
         'foto_akte',
         'foto_ktp_ayah',
         'foto_ktp_ibu',
+
+        // ✅ Status & admin
         'status',
         'catatan_admin',
         'disetujui_pada',
         'disetujui_oleh',
-        'email'
+        'sudah_dihubungi',
     ];
 
     protected $casts = [
         'tanggal_lahir' => 'date',
         'disetujui_pada' => 'datetime',
-        'created_at' => 'datetime',
-        'updated_at' => 'datetime',
-        'deleted_at' => 'datetime',
+        'sudah_dihubungi' => 'boolean',
     ];
 
-    protected $appends = ['status_label', 'tanggal_lahir_formatted'];
+    /* ================= ACCESSOR ================= */
 
-    // Accessor untuk status label
-    public function getStatusLabelAttribute()
-    {
-        $statuses = [
-            'menunggu' => 'Menunggu Verifikasi',
-            'diterima' => 'Diterima',
-            'ditolak' => 'Ditolak'
-        ];
-
-        return $statuses[$this->attributes['status']] ?? $this->attributes['status'];
-    }
-
-    // Accessor untuk tanggal lahir formatted
     public function getTanggalLahirFormattedAttribute()
     {
-        return $this->tanggal_lahir ? $this->tanggal_lahir->format('d F Y') : null;
+        return $this->tanggal_lahir
+            ? $this->tanggal_lahir->translatedFormat('d F Y')
+            : '-';
     }
 
-    // Scope untuk filter status
-    public function scopePending($query)
+    public function getStatusLabelAttribute()
+    {
+        return match ($this->status) {
+            'menunggu' => 'Menunggu Verifikasi',
+            'diterima' => 'Diterima',
+            'ditolak' => 'Ditolak',
+            default => ucfirst($this->status),
+        };
+    }
+
+    /* ================= FOTO URL ================= */
+
+    protected function fotoUrl($path)
+    {
+        return $path ? asset('storage/' . $path) : null;
+    }
+
+    public function getFotoAnakUrlAttribute()
+    {
+        return $this->fotoUrl($this->foto_anak);
+    }
+
+    public function getFotoKkUrlAttribute()
+    {
+        return $this->fotoUrl($this->foto_kk);
+    }
+
+    public function getFotoAkteUrlAttribute()
+    {
+        return $this->fotoUrl($this->foto_akte);
+    }
+
+    public function getFotoKtpAyahUrlAttribute()
+    {
+        return $this->fotoUrl($this->foto_ktp_ayah);
+    }
+
+    public function getFotoKtpIbuUrlAttribute()
+    {
+        return $this->fotoUrl($this->foto_ktp_ibu);
+    }
+
+    /* ================= SCOPE ================= */
+
+    public function scopeMenunggu($query)
     {
         return $query->where('status', 'menunggu');
     }
 
-    public function scopeAccepted($query)
+    public function scopeDiterima($query)
     {
         return $query->where('status', 'diterima');
     }
 
-    public function scopeRejected($query)
+    public function scopeDitolak($query)
     {
         return $query->where('status', 'ditolak');
     }

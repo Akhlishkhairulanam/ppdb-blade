@@ -4,39 +4,48 @@ namespace App\Http\Controllers;
 
 use App\Models\Ppdb;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Storage;
-use Illuminate\Support\Facades\Auth; // Tambahkan ini
 
 class AdminController extends Controller
 {
+    /* ================= DASHBOARD ================= */
+
     public function dashboard()
     {
-        $total = Ppdb::count();
-        $pending = Ppdb::where('status', 'menunggu')->count();
-        $accepted = Ppdb::where('status', 'diterima')->count();
-        $rejected = Ppdb::where('status', 'ditolak')->count();
+        $total     = Ppdb::count();
+        $pending   = Ppdb::where('status', 'menunggu')->count();
+        $accepted  = Ppdb::where('status', 'diterima')->count();
+        $rejected  = Ppdb::where('status', 'ditolak')->count();
+
         $recentRegistrations = Ppdb::latest()->take(5)->get();
 
-        return view('admin.dashboard', compact('total', 'pending', 'accepted', 'rejected', 'recentRegistrations'));
+        return view('admin.dashboard', compact(
+            'total',
+            'pending',
+            'accepted',
+            'rejected',
+            'recentRegistrations'
+        ));
     }
+
+    /* ================= LIST DATA ================= */
 
     public function index(Request $request)
     {
         $query = Ppdb::query();
 
-        // Filter by status
-        if ($request->has('status') && $request->status != 'all') {
+        if ($request->filled('status') && $request->status !== 'all') {
             $query->where('status', $request->status);
         }
 
-        // Search
-        if ($request->has('search')) {
+        if ($request->filled('search')) {
             $search = $request->search;
             $query->where(function ($q) use ($search) {
-                $q->where('nama', 'like', "%{$search}%")
-                    ->orWhere('no_pendaftaran', 'like', "%{$search}%")
-                    ->orWhere('nik', 'like', "%{$search}%")
-                    ->orWhere('nama_ayah', 'like', "%{$search}%");
+                $q->where('nama', 'like', "%$search%")
+                    ->orWhere('no_pendaftaran', 'like', "%$search%")
+                    ->orWhere('nik', 'like', "%$search%")
+                    ->orWhere('nama_ayah', 'like', "%$search%");
             });
         }
 
@@ -45,86 +54,72 @@ class AdminController extends Controller
         return view('admin.registrations.index', compact('registrations'));
     }
 
+    /* ================= DETAIL ================= */
+
     public function show($id)
     {
         $registration = Ppdb::findOrFail($id);
         return view('admin.registrations.show', compact('registration'));
     }
 
-    public function approve($id)
+    /* ================= APPROVE ================= */
+
+    public function approve(Request $request, $id)
     {
-        $registration = Ppdb::findOrFail($id);
+        $ppdb = Ppdb::findOrFail($id);
 
-        // Gunakan Auth facade untuk menghindari warning Intelephense
-        if (Auth::check()) {
-            $adminName = Auth::user()->name;
-        } else {
-            $adminName = 'System';
-        }
-
-        $registration->update([
+        $ppdb->update([
             'status' => 'diterima',
             'disetujui_pada' => now(),
-            'disetujui_oleh' => $adminName,
+            'disetujui_oleh' => Auth::user()->name,
+            'sudah_dihubungi' => 1,
         ]);
 
-        // Generate WhatsApp message for parents
+        $noHp = '62' . ltrim($ppdb->no_hp_ayah, '0');
+
         $message = "🎉 *SELAMAT! PENDAFTARAN DITERIMA*\n\n"
-            . "Kepada Yth. Bapak/Ibu {$registration->nama_ayah},\n\n"
-            . "Kami dengan senang hati menginformasikan bahwa pendaftaran PPDB untuk:\n"
-            . "Nama: *{$registration->nama}*\n"
-            . "No. Pendaftaran: {$registration->no_pendaftaran}\n\n"
-            . "*TELAH DITERIMA* di SD IT Baitul Ihsan.\n\n"
-            . "📅 *Tahap Selanjutnya:*\n"
-            . "1. Daftar ulang di sekolah\n"
-            . "2. Pembayaran biaya sekolah\n"
-            . "3. Orientasi siswa baru\n\n"
-            . "📞 Hubungi kami untuk info lebih lanjut:\n"
-            . "0822-2583-2575";
+            . "Assalamu’alaikum Bapak/Ibu {$ppdb->nama_ayah},\n\n"
+            . "Kami dari *PPDB SD IT Baitul Ihsan* menginformasikan bahwa:\n\n"
+            . "👧 Nama Siswa : *{$ppdb->nama}*\n"
+            . "📄 No Daftar : *{$ppdb->no_pendaftaran}*\n\n"
+            . "✅ *DINYATAKAN DITERIMA*\n\n"
+            . "📌 Silakan melakukan *daftar ulang* ke sekolah.\n\n"
+            . "📞 Admin PPDB\n"
+            . "SD IT Baitul Ihsan";
 
-        $whatsappUrl = "https://wa.me/62" . substr($registration->no_hp_ayah, 1) . "?text=" . urlencode($message);
+        $waUrl = "https://wa.me/{$noHp}?text=" . urlencode($message);
 
-        return redirect()->route('admin.registrations.show', $id)
-            ->with('success', 'Pendaftaran berhasil disetujui.')
-            ->with('whatsapp_url', $whatsappUrl);
+        return redirect()->away($waUrl);
     }
-
     public function reject(Request $request, $id)
     {
-        $request->validate([
-            'alasan_penolakan' => 'required|string|max:500'
-        ]);
+        $ppdb = Ppdb::findOrFail($id);
 
-        $registration = Ppdb::findOrFail($id);
-
-        // Gunakan Auth facade untuk menghindari warning Intelephense
-        if (Auth::check()) {
-            $adminName = Auth::user()->name;
-        } else {
-            $adminName = 'System';
-        }
-
-        $registration->update([
-            'status' => 'ditolak', // PERBAIKAN: ini harus 'ditolak' bukan 'diterima'
-            'catatan_admin' => $request->alasan_penolakan, // Simpan alasan penolakan
+        $ppdb->update([
+            'status' => 'ditolak',
             'disetujui_pada' => now(),
-            'disetujui_oleh' => $adminName,
+            'disetujui_oleh' => Auth::user()->name,
+            'sudah_dihubungi' => 1,
         ]);
 
-        // Generate WhatsApp message for parents
-        $message = "Mohon maaf, pendaftaran PPDB untuk:\n"
-            . "Nama: {$registration->nama}\n"
-            . "No. Pendaftaran: {$registration->no_pendaftaran}\n\n"
-            . "Tidak dapat kami terima dengan alasan:\n"
-            . "{$request->alasan_penolakan}\n\n"
-            . "Terima kasih atas minat Anda.";
+        $noHp = '62' . ltrim($ppdb->no_hp_ayah, '0');
 
-        $whatsappUrl = "https://wa.me/62" . substr($registration->no_hp_ayah, 1) . "?text=" . urlencode($message);
+        $message = "Assalamu’alaikum Bapak/Ibu {$ppdb->nama_ayah},\n\n"
+            . "Terima kasih telah mendaftar *PPDB SD IT Baitul Ihsan*.\n\n"
+            . "Setelah proses seleksi, pendaftaran atas:\n\n"
+            . "👧 Nama : *{$ppdb->nama}*\n"
+            . "📄 No Daftar : *{$ppdb->no_pendaftaran}*\n\n"
+            . "❌ *BELUM DAPAT KAMI TERIMA*\n\n"
+            . "Semoga Allah menggantinya dengan yang lebih baik.\n\n"
+            . "Hormat kami,\n"
+            . "Admin PPDB SD IT Baitul Ihsan";
 
-        return redirect()->route('admin.registrations.show', $id)
-            ->with('success', 'Pendaftaran berhasil ditolak.')
-            ->with('whatsapp_url', $whatsappUrl);
+        $waUrl = "https://wa.me/{$noHp}?text=" . urlencode($message);
+
+        return redirect()->away($waUrl);
     }
+
+    /* ================= UPDATE CATATAN ================= */
 
     public function updateNotes(Request $request, $id)
     {
@@ -137,47 +132,58 @@ class AdminController extends Controller
             'catatan_admin' => $request->catatan_admin
         ]);
 
-        return redirect()->route('admin.registrations.show', $id)
-            ->with('success', 'Catatan berhasil diperbarui.');
+        return back()->with('success', 'Catatan diperbarui.');
     }
+
+    /* ================= HAPUS DATA ================= */
 
     public function destroy($id)
     {
         $registration = Ppdb::findOrFail($id);
 
-        // Delete files from storage
         Storage::disk('public')->delete([
             $registration->foto_anak,
             $registration->foto_kk,
             $registration->foto_ktp_ayah,
-            $registration->foto_ktp_ibu
+            $registration->foto_ktp_ibu,
         ]);
 
         $registration->delete();
 
-        return redirect()->route('admin.registrations.index')
-            ->with('success', 'Data pendaftaran berhasil dihapus.');
+        return redirect()
+            ->route('admin.registrations.index')
+            ->with('success', 'Data berhasil dihapus.');
     }
 
-    public function export(Request $request)
+    /* ================= EXPORT ================= */
+
+    public function export()
     {
         $registrations = Ppdb::where('status', 'diterima')->get();
 
-        $data = [
-            ['No', 'No Pendaftaran', 'Nama', 'NIK', 'TTL', 'Jenis Kelamin', 'Nama Ayah', 'No HP Ayah', 'Status']
-        ];
+        $data = [[
+            'No',
+            'No Pendaftaran',
+            'Nama',
+            'NIK',
+            'TTL',
+            'JK',
+            'Nama Ayah',
+            'No HP',
+            'Status'
+        ]];
 
-        foreach ($registrations as $index => $registration) {
+        foreach ($registrations as $i => $r) {
             $data[] = [
-                $index + 1,
-                $registration->no_pendaftaran,
-                $registration->nama,
-                $registration->nik,
-                $registration->tempat_lahir . ', ' . $registration->tanggal_lahir_formatted,
-                $registration->jenis_kelamin,
-                $registration->nama_ayah,
-                $registration->no_hp_ayah,
-                $registration->status
+                $i + 1,
+                $r->no_pendaftaran,
+                $r->nama,
+                $r->nik,
+                $r->tempat_lahir . ', ' . $r->tanggal_lahir,
+                $r->jenis_kelamin,
+                $r->nama_ayah,
+                $r->no_hp_ayah,
+                $r->status,
             ];
         }
 
@@ -187,6 +193,6 @@ class AdminController extends Controller
                 fputcsv($file, $row);
             }
             fclose($file);
-        }, 'data-ppdb-diterima-' . date('Y-m-d') . '.csv');
+        }, 'ppdb-diterima-' . date('Y-m-d') . '.csv');
     }
 }
